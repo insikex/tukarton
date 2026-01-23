@@ -677,6 +677,7 @@ def calculate_max_ton(price_per_ton, payment_method_type, payment_method):
 
 pending_orders = {} 
 user_payment_info = {} 
+notification_messages = {}  # Menyimpan message_id notifikasi untuk setiap order_id 
 
 ton_price_cache = {
     'price_idr': 0,
@@ -1819,12 +1820,15 @@ async def handle_payment_proof(update: Update, context: ContextTypes.DEFAULT_TYP
     
     try:
         photo = update.message.photo[-1]
-        await context.bot.send_photo(
+        notification_msg = await context.bot.send_photo(
             chat_id=OWNER_USER_ID,
             photo=photo.file_id,
             caption=admin_text,
             parse_mode='HTML'
         )
+        
+        # Simpan message_id notifikasi untuk dihapus nanti saat transaksi selesai
+        notification_messages[order_id] = notification_msg.message_id
         
         logger.info(f"Bukti transfer diterima dari user {user_id}, order {order_id}")
         
@@ -2116,6 +2120,23 @@ async def handle_admin_confirmation(update: Update, context: ContextTypes.DEFAUL
         logger.info(f"Transaksi {order_id} selesai untuk user {target_user_id}")
         
         complete_transaction(order_id)
+        
+        # ============================================================
+        # HAPUS NOTIFIKASI TRANSAKSI OTOMATIS
+        # ============================================================
+        if order_id in notification_messages:
+            try:
+                await context.bot.delete_message(
+                    chat_id=OWNER_USER_ID,
+                    message_id=notification_messages[order_id]
+                )
+                del notification_messages[order_id]
+                logger.info(f"Notifikasi transaksi {order_id} berhasil dihapus")
+            except Exception as e:
+                logger.error(f"Gagal menghapus notifikasi transaksi {order_id}: {e}")
+        # ============================================================
+        # END OF HAPUS NOTIFIKASI TRANSAKSI OTOMATIS
+        # ============================================================
         
         # ============================================================
         # START OF REFERRAL SYSTEM - NOTIFY REFERRER
